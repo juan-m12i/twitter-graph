@@ -161,7 +161,8 @@ def fetch_users_paged(apis: List[twitter.Api], screen_name: str, api_func: str, 
 def fetch_friendships(friendships: Dict[str, List], apis: apis, users: user_dicts, excluded, out, target,
                       save_frequency=15,
                       friends_restricted_to=None,
-                      friendships_file="cache/friendships.json") -> None:
+                      friendships_file="cache/friendships.json",
+                      too_connected_file="too_connected.json") -> None:
     """
         Fetch the friends of a list of users from Twitter API
     :param Dict[str, List[str] friendships: a dictionary holding the list of friends ids, for each user id
@@ -178,14 +179,19 @@ def fetch_friendships(friendships: Dict[str, List], apis: apis, users: user_dict
     friends_restricted_to = friends_restricted_to if friends_restricted_to else users
     users_ids = set([str(user["id"]) for user in friends_restricted_to])
     excluded = [s.lower() for s in get_or_set(excluded, [])]
+    too_connected: Dict[str, int] = {}
     api_idx = 0
     for i, user in enumerate(users):
         friends_count = user["friends_count"]
-        if user["screen_name"].lower() in excluded:
-            print(f'Excluding user {user["screen_name"].lower()} based on list')
+        user_name = user["screen_name"].lower()
+        if user_name in excluded:
+            print(f'Excluding user {user_name} based on list')
             continue
         if friends_count > 25000:
-            print(f'Excluding user {user["screen_name"].lower()} based on following too many ({friends_count})')
+            print(f'Excluding user {user_name} based on following too many ({friends_count})')
+            if user_name not in too_connected:
+                too_connected[user_name] = friends_count
+            get_or_set(out / target / too_connected_file, too_connected.copy(), force=True)
             continue
         if str(user["id"]) in friendships:
             print(f"[{len(friendships)}] @{user['screen_name']} found in cache.")
@@ -224,7 +230,7 @@ def fetch_friendships(friendships: Dict[str, List], apis: apis, users: user_dict
             common_friends = set(user_friends).intersection(users_ids)
             friendships[str(user["id"])] = list(common_friends)
             # Write to file
-            if (i % save_frequency == 0) or (j % (save_frequency * len(time_last_pull_apis))):
+            if (i % save_frequency == 0) or (j % (save_frequency * len(time_last_pull_apis)) == 0):
                 print(f'saving {i}, {j}')
                 get_or_set(out / target / friendships_file, friendships.copy(), force=True)
     get_or_set(out / target / friendships_file, friendships.copy(), force=True)
